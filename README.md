@@ -43,6 +43,12 @@ The addon queries the following databases simultaneously. Results are prioritize
 ## 🌍 Configuration and Installation
 **🚨 Note for existing users:** Because v1.6.0 introduces new configuration parameters in the installation URL, you must uninstall any previous versions of Stremio Stinger Pro from your Stremio client before upgrading.
 
+### Environment Variables
+You must set the `TMDB_API_KEY` environment variable with your personal TMDB API key before starting the server.
+```bash
+export TMDB_API_KEY="your_api_key_here"
+```
+
 1.  Navigate to `https://stremio-stinger-pro.onrender.com/configure`
 2.  Select your preferred display style (Colorful or Simple).
 3.  Toggle the checkboxes to include/exclude source attribution and bloopers.

@@ -15,7 +15,7 @@ const config = {
     headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36' },
     timeout: 8000 
 };
-const DEFAULT_TMDB_KEY = "dc0aefa944df1ef858fafd8085d2e60f"; 
+const DEFAULT_TMDB_KEY = process.env.TMDB_API_KEY;
 
 const streamCache = new Map();
 const CACHE_TTL_SUCCESS = 30 * 60 * 1000; 
