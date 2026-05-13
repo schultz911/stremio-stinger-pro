@@ -719,21 +719,29 @@ if (require.main === module) {
 
     console.log("All synchronous unit tests passed.");
 
-    // checkMediaStinger Error Handling
+    // Async Error Handling Tests
     (async () => {
         const originalGet = axios.get;
-        let testPassed = false;
+        let testsPassed = true;
+
         try {
+            // checkMediaStinger Error Handling
             axios.get = async () => { throw new Error('Mocked Network Error'); };
-            const result = await checkMediaStinger('Some Title', '2024', {});
-            assert.strictEqual(result, null, 'checkMediaStinger should return null on error');
-            testPassed = true;
+            const msResult = await checkMediaStinger('Some Title', '2024', {});
+            assert.strictEqual(msResult, null, 'checkMediaStinger should return null on error');
             console.log('checkMediaStinger error handling test passed.');
+
+            // checkAfterCredits Error Handling
+            const acResult = await checkAfterCredits('Some Title', '2024', {});
+            assert.strictEqual(acResult, null, 'checkAfterCredits should return null on error');
+            console.log('checkAfterCredits error handling test passed.');
+
         } catch (e) {
-            console.error('checkMediaStinger error handling test failed:', e);
+            console.error('Async error handling tests failed:', e);
+            testsPassed = false;
         } finally {
             axios.get = originalGet;
-            if (!testPassed) process.exit(1);
+            if (!testsPassed) process.exit(1);
             else process.exit(0); // auto-terminate on success
         }
     })();
