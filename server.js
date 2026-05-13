@@ -680,7 +680,170 @@ app.get('/stream/:type/:id.json', streamHandler);
 app.get('/:p1/stream/:type/:id.json', streamHandler);
 app.get('/:style/:apiKey/stream/:type/:id.json', streamHandler);
 
-app.listen(process.env.PORT || 7000, () => {
-    buildWikiIndex();
-    console.log('[System] Stremio Stinger Pro initialized.');
-});
+if (require.main === module) {
+    if (!process.env.RUN_TESTS) {
+        app.listen(process.env.PORT || 7000, () => {
+            buildWikiIndex();
+            console.log('[System] Stremio Stinger Pro initialized.');
+        });
+    } else {
+        const assert = require('assert');
+
+        async function runTests() {
+            console.log('Running tests...');
+
+            // Testing Infrastructure
+            // Replace cache clear method for tests
+            const originalMap = new Map();
+            streamCache.set = (k, v) => originalMap.set(k, v);
+            streamCache.get = (k) => originalMap.get(k);
+            streamCache.has = (k) => originalMap.has(k);
+            streamCache.delete = (k) => originalMap.delete(k);
+            streamCache.clear = () => originalMap.clear();
+
+            // Mock Response Object
+            const createMockReq = () => ({ params: { type: 'movie', id: 'tt1234567', style: 'colorful' } });
+
+            const createMockRes = () => {
+                let data = null;
+                return {
+                    json: (d) => { data = d; return d; },
+                    setHeader: () => {},
+                    getData: () => data
+                };
+            };
+
+            const reqMock = { params: { type: 'movie', id: 'tt1234567' } };
+
+            const axios = require('axios');
+            const originalAxiosGet = axios.get;
+
+            async function runTest(name, setupMocks, testLogic) {
+                console.log(`Running test: ${name}`);
+                streamCache.clear();
+                axios.get = setupMocks;
+
+                try {
+                    await testLogic();
+                    console.log(`✅ ${name} passed`);
+                } catch (e) {
+                    console.error(`❌ ${name} failed`, e);
+                    throw e;
+                } finally {
+                    axios.get = originalAxiosGet;
+                }
+            }
+
+            console.log('Test setup complete');
+
+            // Helper delay for mocks
+            const delay = (ms) => new Promise(r => setTimeout(r, ms));
+
+            // Test 1: Fallback Logic Preference (no: true preferred over no: false)
+            await runTest('Fallback logic prefers no:true over no:false', async (url) => {
+                if (url.includes('v3-cinemeta')) return { data: { meta: { name: 'fallback test', year: '2023' } } };
+
+                if (url.includes('aftercredits.com')) {
+                    if (url.includes('?s=')) return { data: '<html><body><article><h2 class="entry-title"><a href="https://aftercredits.com/test">fallback test</a></h2></article></body></html>' };
+                    return { data: '<html><body><div class="spoiler-wrap"><div class="spoiler-head">Nothing</div>there is no after credits scene</div></body></html>' };
+                }
+
+                if (url.includes('mediastinger.com')) {
+                    return { data: '' }; // No match found
+                }
+
+                if (url.includes('themoviedb.org/3/find')) return { data: { movie_results: [{ id: 123 }] } };
+                if (url.includes('themoviedb.org/3/movie')) return { data: { keywords: [] } };
+                if (url.includes('wikipedia.org')) return { data: { parse: { text: { '*': '' } } } };
+
+                return { data: {} };
+            }, async () => {
+                const reqMock = createMockReq();
+                const resMock = createMockRes();
+                await streamHandler(reqMock, resMock);
+
+                const result = resMock.getData();
+                assert.ok(result.streams && result.streams.length > 0, "Should return a stream");
+                const stream = result.streams[0];
+
+                // Since no: true is a fallback, the response formatting outputs "🏃‍♂️ Nothing But Credits" when no: true is set.
+                assert.ok(stream.title.includes('Nothing But Credits') || stream.title.includes('No scenes'), "Stream title should indicate NO scenes");
+                assert.ok(stream.title.includes('Source: AfterCredits'), "Source should be AfterCredits");
+            });
+
+            // Test 2: Concurrency & Short-Circuiting
+            await runTest('Concurrency short-circuits on definitive higher-priority result', async (url) => {
+                if (url.includes('v3-cinemeta')) return { data: { meta: { name: 'short circuit test', year: '2023' } } };
+
+                if (url.includes('aftercredits.com')) {
+                    await delay(10);
+                    if (url.includes('?s=')) return { data: '<html><body><article><h2 class="entry-title"><a href="https://aftercredits.com/test">short circuit test</a></h2></article></body></html>' };
+                    return { data: '<html><body><div class="spoiler-wrap"><div class="spoiler-head">mid</div>something</div></body></html>' };
+                }
+
+                if (url.includes('mediastinger.com')) {
+                    await delay(100);
+                    return { data: '' };
+                }
+
+                if (url.includes('themoviedb.org/3/find')) return { data: { movie_results: [] } };
+                if (url.includes('wikipedia.org')) return { data: { parse: { text: { '*': '' } } } };
+
+                return { data: {} };
+            }, async () => {
+                const reqMock = createMockReq();
+                const resMock = createMockRes();
+                const start = Date.now();
+                await streamHandler(reqMock, resMock);
+                const duration = Date.now() - start;
+
+                const result = resMock.getData();
+                assert.ok(result.streams.length > 0);
+                assert.ok(result.streams[0].title.includes('Source: AfterCredits'));
+                assert.ok(duration < 80, "Should have short-circuited before MediaStinger finished");
+            });
+
+            // Test 3: Priority Order
+            await runTest('Lower priority definitive result waits for higher priority', async (url) => {
+                if (url.includes('v3-cinemeta')) return { data: { meta: { name: 'priority test', year: '2023' } } };
+
+                if (url.includes('aftercredits.com')) {
+                    await delay(50);
+                    if (url.includes('?s=')) return { data: '<html><body><article><h2 class="entry-title"><a href="https://aftercredits.com/test">Priority Test</a></h2></article></body></html>' };
+                    return { data: '<html><body><p>just some article, no spoiler wrap.</p></body></html>' };
+                }
+
+                if (url.includes('mediastinger.com')) {
+                    await delay(10);
+                    if (url.includes('?s=')) return { data: '<html><body><div class="item"><h2 class="title"><a href="https://mediastinger.com/test">priority test</a></h2></div></body></html>' };
+                    return { data: '<html><body><p>during the credits</p></body></html>' };
+                }
+
+                if (url.includes('themoviedb.org/3/find')) return { data: { movie_results: [] } };
+                if (url.includes('wikipedia.org')) return { data: { parse: { text: { '*': '' } } } };
+
+                return { data: {} };
+            }, async () => {
+                const reqMock = createMockReq();
+                const resMock = createMockRes();
+                const start = Date.now();
+                await streamHandler(reqMock, resMock);
+                const duration = Date.now() - start;
+
+                const result = resMock.getData();
+                assert.ok(result.streams.length > 0);
+                assert.ok(result.streams[0].title.includes('Source: MediaStinger'));
+                assert.ok(duration >= 50, "Should have waited for AfterCredits to finish before using MediaStinger");
+            });
+
+            console.log('All tests finished.');
+        }
+
+        runTests().catch(e => {
+            console.error('Test suite failed', e);
+            process.exit(1);
+        });
+    }
+} else {
+    module.exports = { app, streamHandler, checkAfterCredits, checkMediaStinger, checkTmdb, checkWikipedia };
+}
