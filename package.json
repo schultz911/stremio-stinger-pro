@@ -4,7 +4,8 @@
   "description": "Stremio addon for after-credits metadata",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node server.test.js"
   },
   "dependencies": {
     "axios": "^1.6.8",

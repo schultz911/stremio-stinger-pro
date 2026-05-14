@@ -680,7 +680,18 @@ app.get('/stream/:type/:id.json', streamHandler);
 app.get('/:p1/stream/:type/:id.json', streamHandler);
 app.get('/:style/:apiKey/stream/:type/:id.json', streamHandler);
 
-app.listen(process.env.PORT || 7000, () => {
-    buildWikiIndex();
-    console.log('[System] Stremio Stinger Pro initialized.');
-});
+if (require.main === module) {
+    app.listen(process.env.PORT || 7000, () => {
+        buildWikiIndex();
+        console.log('[System] Stremio Stinger Pro initialized.');
+    });
+}
+
+module.exports = {
+    app,
+    cleanTitle,
+    isSafeSuffix,
+    isTitleMatch,
+    validateUrl,
+    wikiNormalize
+};

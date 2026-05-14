@@ -1,0 +1,5 @@
+🧪 [testing improvement] Add test suite for server.js utility functions
+
+🎯 **What:** The testing gap addressed was that `server.js` was a large monolith with complex external dependencies, making unit testing difficult.
+📊 **Coverage:** Extracted and tested pure string manipulation and validation functions (`cleanTitle`, `isSafeSuffix`, `isTitleMatch`, `validateUrl`, and `wikiNormalize`) using the built-in Node.js `assert` module. Handled `app.listen` gracefully.
+✨ **Result:** A fully functional and automated test script (`npm test`) now exists, preventing logic regressions in core matching utilities.
