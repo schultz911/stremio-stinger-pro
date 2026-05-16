@@ -1,13 +1,15 @@
-⚡ Bolt: Use moviedb_id from cinemeta to skip redundant TMDB API call
+🧹 Refactor checkAfterCredits function
 
-💡 What:
-Updated the TMDB scraper (`checkTmdb`) to accept a TMDB ID directly. We then extract `metaRes.data.meta.moviedb_id` from the existing Cinemeta API response in the main stream handler and pass it to the TMDB function.
+🎯 What:
+Extracted the complex HTML fetching, matching, and parsing logic out of `checkAfterCredits` into two new helper functions: `searchAfterCreditsMatch` and `parseAfterCreditsPage`.
 
-🎯 Why:
-To fetch keywords from TMDB, the app was previously making an extra `GET /3/find/${imdbId}` API call to resolve the IMDB ID to a TMDB ID. Since we already have the `moviedb_id` from the initial Cinemeta metadata fetch, we can skip this extra network request entirely.
+💡 Why:
+The original function was nearly 150 lines long, performing distinct logical operations including search query generation, HTML list parsing to find a match, specific movie page loading, tag categorizing, and section parsing for content details. Splitting these into logically separated helper functions significantly improves readability, reduces nesting, and makes the code easier to test and maintain without altering behavior.
 
-📊 Impact:
-Removes one redundant API call and its associated latency (~100ms on average) from the TMDB scraper's critical path, speeding up the concurrent resolution.
+✅ Verification:
+- Validated Javascript syntax using `node -c server.js`.
+- Verified that all logic, variable scoping, and the SSRF `validateUrl` checks were perfectly preserved.
+- Code review complete and passed. No formal test suite is currently implemented in package.json.
 
-🔬 Measurement:
-Run the stream request for a movie with a `moviedb_id` in cinemeta (e.g. `tt0468569`). Observe that the `/3/find` request is no longer made to TMDB, and execution time is reduced.
+✨ Result:
+The codebase is cleaner, `checkAfterCredits` acts as an orchestrator instead of a monolith, and readability and maintainability are substantially enhanced.

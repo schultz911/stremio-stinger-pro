@@ -283,105 +283,117 @@ async function checkWikipedia(title, reqConfig) {
     return null;
 }
 
+async function searchAfterCreditsMatch(title, year, reqConfig) {
+    const cleanedTitle = cleanTitle(title.toLowerCase().trim());
+    const searchUrl = `https://aftercredits.com/?s=${encodeURIComponent(year ? `${title} ${year}` : title).replace(/%20/g, '+')}`;
+    const searchRes = await axios.get(searchUrl, reqConfig);
+    const $ = cheerio.load(searchRes.data);
+    let potentialMatches = [];
+
+    $("h2 a, h3 a, .entry-title a, .title a, .post-title a").each((i, el) => {
+        const rawLinkText = $(el).text().toLowerCase().trim();
+        if (!rawLinkText) return;
+
+        if (isTitleMatch(rawLinkText, cleanedTitle)) {
+            potentialMatches.push({
+                url: $(el).attr('href'),
+                isReview: rawLinkText.includes('review'),
+                rawText: rawLinkText
+            });
+        }
+    });
+
+    if (potentialMatches.length === 0) {
+        console.log(`[AfterCredits] Aborting: No match found.`);
+        return null;
+    }
+
+    potentialMatches.sort((a, b) => {
+        if (a.isReview !== b.isReview) return a.isReview ? 1 : -1;
+        return 0;
+    });
+
+    return potentialMatches[0];
+}
+
+async function parseAfterCreditsPage(bestMatchUrl, reqConfig) {
+    const movieRes = await axios.get(bestMatchUrl, reqConfig);
+    const $$ = cheerio.load(movieRes.data);
+    let hasMid = false, hasPost = false, bloopers = false, sequel = false;
+
+    let categoryTags = [];
+    $$('ul.td-category li.entry-category a').each((i, el) => {
+        categoryTags.push($$(el).text().trim().toLowerCase());
+    });
+    console.log(`[AfterCredits] Categories Found: [${categoryTags.join(', ')}]`);
+
+    if (categoryTags.includes('non-stingers')) {
+        console.log(`[AfterCredits] 'non-stingers' category detected. Forcing definitive negative state.`);
+        return getResultObj(false, false, true, bestMatchUrl, 'AfterCredits', false, true);
+    }
+
+    if (categoryTags.length > 0) {
+        if (categoryTags.includes('both during & after credits')) { hasMid = true; hasPost = true; }
+        if (categoryTags.includes('during credits')) { hasMid = true; }
+        if (categoryTags.includes('after credits')) { hasPost = true; }
+        if (categoryTags.some(t => ['outtake', 'musical', 'blooper', 'humorous credit'].includes(t))) { bloopers = true; }
+        if (categoryTags.includes('sequel setup')) { sequel = true; }
+    }
+
+    console.log(`[AfterCredits] Parsing body containers...`);
+
+    const updateStingerState = (isBlooper, isNegative, currentState, type) => {
+        if (isBlooper) {
+            bloopers = true;
+            console.log(`[AfterCredits] Blooper found in ${type} container.`);
+            return currentState;
+        }
+        return !isNegative;
+    };
+
+    $$(".spoiler-wrap").each((i, el) => {
+        const headText = $$(el).find(".spoiler-head").text().trim().toLowerCase();
+        const blockText = $$(el).text().toLowerCase();
+
+        const isBlooper = BLOOPER_REGEX.test(blockText);
+        const isNegative = NEGATIVE_REGEX.test(blockText) && !STINGER_EXCEPTION_REGEX.test(blockText);
+
+        if (headText.includes("during") || headText.includes("mid")) {
+            hasMid = updateStingerState(isBlooper, isNegative, hasMid, 'MID');
+        }
+
+        if (headText.includes("after") || headText.includes("post")) {
+            hasPost = updateStingerState(isBlooper, isNegative, hasPost, 'POST');
+        }
+    });
+
+    let isDefinitive = false;
+    if (hasMid || hasPost || bloopers || sequel) {
+        isDefinitive = true;
+    }
+
+    const isNegative = (!hasMid && !hasPost && !bloopers);
+
+    console.log(`[AfterCredits] Result -> Mid: ${hasMid}, Post: ${hasPost}, Negative: ${isNegative}, Bloopers: ${bloopers}, Definitive: ${isDefinitive}, Sequel: ${sequel}`);
+    return getResultObj(hasMid, hasPost, isNegative, bestMatchUrl, 'AfterCredits', bloopers, isDefinitive, sequel);
+}
+
 async function checkAfterCredits(title, year, reqConfig) {
     console.log(`\n--- [AfterCredits] Execution Start: "${title}" ---`);
     try {
-        const cleanedTitle = cleanTitle(title.toLowerCase().trim());
-        const searchUrl = `https://aftercredits.com/?s=${encodeURIComponent(year ? `${title} ${year}` : title).replace(/%20/g, '+')}`;
-        const searchRes = await axios.get(searchUrl, reqConfig);
-        const $ = cheerio.load(searchRes.data);
-        let potentialMatches = [];
+        const bestMatch = await searchAfterCreditsMatch(title, year, reqConfig);
 
-        $("h2 a, h3 a, .entry-title a, .title a, .post-title a").each((i, el) => {
-            const rawLinkText = $(el).text().toLowerCase().trim();
-            if (!rawLinkText) return;
-
-            if (isTitleMatch(rawLinkText, cleanedTitle)) {
-                potentialMatches.push({
-                    url: $(el).attr('href'),
-                    isReview: rawLinkText.includes('review'),
-                    rawText: rawLinkText
-                });
-            }
-        });
-
-        if (potentialMatches.length === 0) {
-            console.log(`[AfterCredits] Aborting: No match found.`);
+        if (!bestMatch) {
             return null;
         }
 
-        potentialMatches.sort((a, b) => {
-            if (a.isReview !== b.isReview) return a.isReview ? 1 : -1;
-            return 0;
-        });
-
-        const bestMatch = potentialMatches[0];
         console.log(`[AfterCredits] Fetching -> ${bestMatch.url} (Text: "${bestMatch.rawText}")`);
 
         // Security: Prevent SSRF by validating the URL before fetching
         const safeUrl = validateUrl(bestMatch.url, 'https://aftercredits.com', 'aftercredits.com');
         if (!safeUrl) return null;
-        bestMatch.url = safeUrl;
 
-        const movieRes = await axios.get(bestMatch.url, reqConfig);
-        const $$ = cheerio.load(movieRes.data);
-        let hasMid = false, hasPost = false, bloopers = false, sequel = false;
-
-        let categoryTags = [];
-        $$('ul.td-category li.entry-category a').each((i, el) => {
-            categoryTags.push($$(el).text().trim().toLowerCase());
-        });
-        console.log(`[AfterCredits] Categories Found: [${categoryTags.join(', ')}]`);
-
-        if (categoryTags.includes('non-stingers')) {
-            console.log(`[AfterCredits] 'non-stingers' category detected. Forcing definitive negative state.`);
-            return getResultObj(false, false, true, bestMatch.url, 'AfterCredits', false, true);
-        }
-
-        if (categoryTags.length > 0) {
-            if (categoryTags.includes('both during & after credits')) { hasMid = true; hasPost = true; }
-            if (categoryTags.includes('during credits')) { hasMid = true; }
-            if (categoryTags.includes('after credits')) { hasPost = true; }
-            if (categoryTags.some(t => ['outtake', 'musical', 'blooper', 'humorous credit'].includes(t))) { bloopers = true; }
-            if (categoryTags.includes('sequel setup')) { sequel = true; }
-        }
-
-        console.log(`[AfterCredits] Parsing body containers...`);
-
-        const updateStingerState = (isBlooper, isNegative, currentState, type) => {
-            if (isBlooper) {
-                bloopers = true;
-                console.log(`[AfterCredits] Blooper found in ${type} container.`);
-                return currentState;
-            }
-            return !isNegative;
-        };
-
-        $$(".spoiler-wrap").each((i, el) => {
-            const headText = $$(el).find(".spoiler-head").text().trim().toLowerCase();
-            const blockText = $$(el).text().toLowerCase();
-
-            const isBlooper = BLOOPER_REGEX.test(blockText);
-            const isNegative = NEGATIVE_REGEX.test(blockText) && !STINGER_EXCEPTION_REGEX.test(blockText);
-
-            if (headText.includes("during") || headText.includes("mid")) {
-                hasMid = updateStingerState(isBlooper, isNegative, hasMid, 'MID');
-            }
-
-            if (headText.includes("after") || headText.includes("post")) {
-                hasPost = updateStingerState(isBlooper, isNegative, hasPost, 'POST');
-            }
-        });
-
-        let isDefinitive = false;
-        if (hasMid || hasPost || bloopers || sequel) {
-            isDefinitive = true;
-        }
-
-        const isNegative = (!hasMid && !hasPost && !bloopers);
-
-        console.log(`[AfterCredits] Result -> Mid: ${hasMid}, Post: ${hasPost}, Negative: ${isNegative}, Bloopers: ${bloopers}, Definitive: ${isDefinitive}, Sequel: ${sequel}`);
-        return getResultObj(hasMid, hasPost, isNegative, bestMatch.url, 'AfterCredits', bloopers, isDefinitive, sequel);
+        return await parseAfterCreditsPage(safeUrl, reqConfig);
     } catch (e) {
         if (e.name !== 'CanceledError' && e.message !== 'canceled') {
             console.error(`[AfterCredits Error] ${sanitizeError(e.message)}`);
