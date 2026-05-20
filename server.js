@@ -19,6 +19,10 @@ function sanitizeError(msg) {
     return sanitized.replace(/api_key=[^&\s]+/gi, 'api_key=***');
 }
 
+// 🛡️ Sentinel: Add strict size limits to prevent DoS via large payloads
+app.use(express.json({ limit: '10kb' }));
+app.use(express.urlencoded({ extended: true, limit: '10kb' }));
+
 // 🛡️ Sentinel: Allow all origins (standard for Stremio addons to support various web clients/origins)
 app.use(cors());
 

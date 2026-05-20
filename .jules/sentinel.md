@@ -14,3 +14,7 @@
  **Vulnerability:** The application lacks rate limiting on its endpoints. Because the service aggregates data from multiple external APIs concurrently (e.g., AfterCredits, TMDB, MediaStinger, Wikipedia), a single incoming request can trigger 4+ outbound network requests, allowing for Denial of Service and Server-Side Request Forgery amplification attacks.
  **Learning:** Aggregator services can multiply the impact of requests, meaning a lack of rate-limiting is disproportionately dangerous compared to a standard REST API.
  **Prevention:** Implement IP-based rate limiting on all public-facing endpoints (using tools like `express-rate-limit` or an in-memory Map) to restrict the number of requests a single client can make within a specific time window.
+## 2024-05-24 - [Add explicit payload size limits]
+**Vulnerability:** Express applications are vulnerable to Denial of Service (DoS) attacks if payload limits are not explicitly set for `express.json` and `express.urlencoded` middleware, as attackers can send extremely large request bodies that exhaust server memory.
+**Learning:** Default configurations in Express middleware often do not have strict size limits. Explicit limits based on the application's expected request sizes (e.g., 10kb for simple configuration payloads) must be defined.
+**Prevention:** Always configure `limit` options when using `express.json()` and `express.urlencoded()` to restrict the maximum allowed request body size.
