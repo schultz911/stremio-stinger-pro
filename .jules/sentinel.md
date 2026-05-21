@@ -18,3 +18,7 @@
 **Vulnerability:** Express applications are vulnerable to Denial of Service (DoS) attacks if payload limits are not explicitly set for `express.json` and `express.urlencoded` middleware, as attackers can send extremely large request bodies that exhaust server memory.
 **Learning:** Default configurations in Express middleware often do not have strict size limits. Explicit limits based on the application's expected request sizes (e.g., 10kb for simple configuration payloads) must be defined.
 **Prevention:** Always configure `limit` options when using `express.json()` and `express.urlencoded()` to restrict the maximum allowed request body size.
+## 2024-05-21 - SSRF Protocol Bypass
+**Vulnerability:** The `validateUrl` function validated hostnames but did not explicitly allowlist URL protocols (like `http:` and `https:`).
+**Learning:** URL objects can parse unexpected protocols (e.g., `file://`, `javascript://`) while still evaluating the hostname as "valid" against expected domains, potentially allowing SSRF bypass.
+**Prevention:** Always explicitly allowlist permitted protocols (e.g., `http:` and `https:`) when validating user-supplied or dynamically parsed URLs to prevent alternative URI scheme exploitation.

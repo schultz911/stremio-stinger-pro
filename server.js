@@ -161,6 +161,10 @@ function validateUrl(targetUrl, baseUrl, expectedHostname) {
             console.warn(`[Security] Blocked untrusted URL: ${sanitizeError(targetUrl)}`);
             return null;
         }
+        if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+            console.warn(`[Security] Blocked untrusted protocol: ${sanitizeError(targetUrl)}`);
+            return null;
+        }
         return parsedUrl.href;
     } catch (e) {
         console.warn(`[Security] Invalid URL format: ${sanitizeError(targetUrl)}`);
