@@ -133,6 +133,20 @@ const WIKI_TTL = 24 * 60 * 60 * 1000;
 // 2. STRING UTILITIES & FORMATTERS
 // ==========================================
 
+// ⚡ Bolt: Fast HTML decode for simple WordPress titles, avoids expensive cheerio.load() in loops
+const decodeWPTitle = (str) => {
+    return str.replace(/<[^>]*>?/gm, '')
+        .replace(/&#(\d+);/g, (m, dec) => String.fromCharCode(dec))
+        .replace(/&#x([0-9a-f]+);/gi, (m, hex) => String.fromCharCode(parseInt(hex, 16)))
+        .replace(/&amp;/g, '&')
+        .replace(/&quot;/g, '"')
+        .replace(/&apos;/g, "'")
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .toLowerCase()
+        .trim();
+};
+
 /**
  * Security: Prevent SSRF by validating the URL before fetching
  * @param {string} targetUrl - The URL to validate
@@ -361,7 +375,8 @@ async function searchAfterCreditsMatch(title, year, reqConfig) {
 
     if (Array.isArray(searchRes.data)) {
         for (const post of searchRes.data) {
-            const rawLinkText = cheerio.load(post.title.rendered).text().toLowerCase().trim();
+            // ⚡ Bolt: Use lightweight regex decoding instead of cheerio.load() in a loop
+            const rawLinkText = decodeWPTitle(post.title.rendered);
             if (!rawLinkText) continue;
 
             if (isTitleMatch(rawLinkText, cleanedTitle)) {
