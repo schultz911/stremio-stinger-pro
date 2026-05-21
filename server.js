@@ -124,6 +124,8 @@ const streamCache = {
 const CACHE_TTL_SUCCESS = 30 * 60 * 1000;
 const CACHE_TTL_ERROR = 60 * 1000;
 
+const inflightRequests = new Map();
+
 let wikiCache = new Map();
 let wikiLastFetched = 0;
 let wikiFetchPromise = null;
@@ -761,6 +763,22 @@ const streamHandler = async (req, res) => {
         }
     }
 
+    // ⚡ Bolt: Coalesce concurrent requests for the same stream to prevent cache stampedes
+    // Expected impact: Reduces redundant external API calls and latency during high concurrency
+    if (inflightRequests.has(cacheKey)) {
+        console.log(`[Stream] Coalescing concurrent request for ${cacheKey}`);
+        try {
+            const streams = await inflightRequests.get(cacheKey);
+            return res.json({ streams });
+        } catch (e) {
+            return res.json({ streams: [] });
+        }
+    }
+
+    let resolveInflight;
+    const inflightPromise = new Promise(resolve => { resolveInflight = resolve; });
+    inflightRequests.set(cacheKey, inflightPromise);
+
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), config.timeout);
     const reqConfig = { ...config, signal: controller.signal };
@@ -830,6 +848,7 @@ const streamHandler = async (req, res) => {
 
             console.log(`[Stream] Payload generated and cached. Sequence complete.`);
             console.log(`=================================\n`);
+            resolveInflight([stream]);
             return res.json({ streams: [stream] });
         }
     } catch (e) {
@@ -839,10 +858,12 @@ const streamHandler = async (req, res) => {
     } finally {
         clearTimeout(timeoutId);
         controller.abort();
+        inflightRequests.delete(cacheKey);
     }
 
     console.log(`[Stream] Sequence aborted. Returning empty streams.`);
     console.log(`=================================\n`);
+    resolveInflight([]);
     res.json({ streams: [] });
 };
 
