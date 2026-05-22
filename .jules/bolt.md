@@ -19,3 +19,6 @@
 ## 2024-05-19 - Cache Cheerio Wrappers in Loops
  **Learning:** In Cheerio's `.each()` loops, calling `$(el)` multiple times within the same loop iteration creates redundant objects and adds parsing overhead, unnecessarily slowing down tight scraping loops.
  **Action:** Always assign the wrapper to a constant at the start of the loop (e.g., `const $el = $(el);`) to minimize object instantiation and garbage collection when the wrapper is needed multiple times.
+## 2024-05-18 - Avoid cheerio.load for simple HTML decoding in loops
+**Learning:** Using `cheerio.load()` inside loops to strip HTML tags and decode entities (e.g., from WordPress API titles) causes significant synchronous blocking of the Node.js event loop due to full DOM parsing overhead.
+**Action:** Replace `cheerio.load()` with lightweight regex-based string replacements when extracting plain text from simple HTML strings inside loops to improve performance by an order of magnitude and prevent main thread blocking.

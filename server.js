@@ -152,6 +152,23 @@ function validateUrl(targetUrl, baseUrl, expectedHostname) {
 
 
 // ⚡ Bolt: Pre-compiled regexes for hot string utilities
+const RE_HTML_ENTITIES = /&(?:amp|#038|#38);/gi;
+const RE_HTML_QUOTES = /&(?:quot|#034|#34);/gi;
+const RE_HTML_APOS = /&(?:apos|#039|#39);/gi;
+const RE_HTML_DECIMAL = /&#(\d+);/g;
+const RE_HTML_TAGS = /<[^>]*>/g;
+
+const decodeSimpleHtml = (str) => {
+    if (!str) return '';
+    return str
+        .replace(RE_HTML_TAGS, '')
+        .replace(RE_HTML_ENTITIES, '&')
+        .replace(RE_HTML_QUOTES, '"')
+        .replace(RE_HTML_APOS, "'")
+        .replace(RE_HTML_DECIMAL, (m, dec) => String.fromCharCode(dec))
+        .trim();
+};
+
 const RE_YEAR = /\(\d{4}\)/g;
 const RE_NON_WORD = /[^\w\s]/g;
 const RE_MULTI_SPACE = /\s+/g;
@@ -357,7 +374,7 @@ async function searchAfterCreditsMatch(title, year, reqConfig) {
 
     if (Array.isArray(searchRes.data)) {
         for (const post of searchRes.data) {
-            const rawLinkText = cheerio.load(post.title.rendered).text().toLowerCase().trim();
+            const rawLinkText = decodeSimpleHtml(post.title.rendered).toLowerCase();
             if (!rawLinkText) continue;
 
             if (isTitleMatch(rawLinkText, cleanedTitle)) {
