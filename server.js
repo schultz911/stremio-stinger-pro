@@ -141,16 +141,25 @@ const WIKI_TTL = 24 * 60 * 60 * 1000;
 // 2. STRING UTILITIES & FORMATTERS
 // ==========================================
 
+const HTML_TAGS_REGEX = /<[^>]*>?/gm;
+const DEC_ENTITY_REGEX = /&#(\d+);/g;
+const HEX_ENTITY_REGEX = /&#x([0-9a-f]+);/gi;
+const AMP_REGEX = /&amp;/g;
+const QUOT_REGEX = /&quot;/g;
+const APOS_REGEX = /&apos;/g;
+const LT_REGEX = /&lt;/g;
+const GT_REGEX = /&gt;/g;
+
 // ⚡ Bolt: Fast HTML decode for simple WordPress titles, avoids expensive cheerio.load() in loops
 const decodeWPTitle = (str) => {
-    return str.replace(/<[^>]*>?/gm, '')
-        .replace(/&#(\d+);/g, (m, dec) => String.fromCharCode(dec))
-        .replace(/&#x([0-9a-f]+);/gi, (m, hex) => String.fromCharCode(parseInt(hex, 16)))
-        .replace(/&amp;/g, '&')
-        .replace(/&quot;/g, '"')
-        .replace(/&apos;/g, "'")
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
+    return str.replace(HTML_TAGS_REGEX, '')
+        .replace(DEC_ENTITY_REGEX, (m, dec) => String.fromCharCode(dec))
+        .replace(HEX_ENTITY_REGEX, (m, hex) => String.fromCharCode(parseInt(hex, 16)))
+        .replace(AMP_REGEX, '&')
+        .replace(QUOT_REGEX, '"')
+        .replace(APOS_REGEX, "'")
+        .replace(LT_REGEX, '<')
+        .replace(GT_REGEX, '>')
         .toLowerCase()
         .trim();
 };
