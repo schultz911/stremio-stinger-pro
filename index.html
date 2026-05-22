@@ -151,12 +151,16 @@
       cursor: pointer;
       font-weight: bold;
       width: 100%;
-      transition: background 0.2s;
+      transition: background 0.2s, transform 0.1s ease;
       margin-top: 15px;
     }
 
     button:hover {
       background: #7141cc;
+    }
+
+    button[type="submit"]:active {
+      transform: scale(0.98);
     }
 
     button:focus-visible,
