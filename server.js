@@ -164,12 +164,12 @@ const decodeWPTitle = (str) => {
 function validateUrl(targetUrl, baseUrl, expectedHostname) {
     try {
         const parsedUrl = new URL(targetUrl, baseUrl);
-        if (parsedUrl.hostname !== expectedHostname && parsedUrl.hostname !== `www.${expectedHostname}`) {
-            console.warn(`[Security] Blocked untrusted URL: ${sanitizeError(targetUrl)}`);
-            return null;
-        }
         if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
             console.warn(`[Security] Blocked untrusted protocol: ${sanitizeError(targetUrl)}`);
+            return null;
+        }
+        if (parsedUrl.hostname !== expectedHostname && parsedUrl.hostname !== `www.${expectedHostname}`) {
+            console.warn(`[Security] Blocked untrusted URL: ${sanitizeError(targetUrl)}`);
             return null;
         }
         return parsedUrl.href;
