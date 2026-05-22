@@ -95,6 +95,7 @@ const BLOOPER_REGEX = /\b(bloopers?|outtakes?|gags?|gag reel)\b/;
 const NEGATIVE_REGEX = /(no extra|no stinger|nothing|are no|no scene)/;
 const STINGER_EXCEPTION_REGEX = /(extra shot|audio|voice|laugh|but|however)/;
 const SAFE_SUFFIXES_REGEX = /^(blooper|bloopers|outtake|outtakes|extra|extras|and|or|with|scene|scenes|credit|credits|stinger|stingers|review|reviews|post|mid|after|end|during|the|is|a|an|there|are|movie|film|\s)+$/;
+const STYLE_MODIFIERS_REGEX = /-nosource|-bloopers|-sequel/g;
 // ⚡ Bolt: Extracted array to global Set to prevent redundant allocations on every page parse and improve lookup from O(N) to O(1)
 const AC_BLOOPER_TAGS = new Set(['outtake', 'musical', 'blooper', 'humorous credit']);
 
@@ -749,7 +750,7 @@ const streamHandler = async (req, res) => {
 
 
     const styleConfig = {
-        style: rawStyle.replace(/-nosource|-bloopers|-sequel/g, ''),
+        style: rawStyle.replace(STYLE_MODIFIERS_REGEX, ''),
         showSource: !rawStyle.includes('-nosource'),
         showBloopers: rawStyle.includes('-bloopers'),
         showSequel: rawStyle.includes('-sequel')

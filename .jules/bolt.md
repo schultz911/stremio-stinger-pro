@@ -22,3 +22,6 @@
 ## 2024-05-19 - Replacing cheerio.load() with lightweight regex for simple HTML strings
  **Learning:** Using `cheerio.load()` to parse and extract text from simple HTML strings (like short WordPress titles) inside loops introduces significant synchronous blocking overhead due to DOM tree construction, slowing down loop execution significantly.
  **Action:** When only simple entity decoding and HTML tag stripping are needed, use lightweight regex-based string replacements (e.g., `str.replace(/<[^>]*>?/gm, '').replace(/&#(\\d+);/g, ...)`) instead of `cheerio.load()`.
+## 2024-05-20 - Global Regex Caching in Node.js
+ **Learning:** In Node.js, extracting regular expressions with the global flag (`/g`) to module-level constants is safe for concurrent requests when used with `String.prototype.replace()`, as the method ignores and resets `lastIndex` for each operation, preventing state/race conditions.
+ **Action:** Proactively extract static regexes used in high-throughput handlers to module scope to avoid redundant compilation, while remaining cautious of `exec()` or `test()` which do depend on `lastIndex`.
