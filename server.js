@@ -842,14 +842,15 @@ const streamHandler = async (req, res) => {
             }
 
             const isAggregatedError = !finalResult && !bestFallback;
-            const resolvedResult = finalResult || bestFallback || { mid: false, post: false, no: false, bloopers: false, sequel: false, url: `https://aftercredits.com/?s=${encodeURIComponent(year ? `${title} ${year}` : title).replace(/%20/g, '+')}`, source: 'Aggregated' };
+            const defaultUrl = `https://aftercredits.com/?s=${encodeURIComponent(year ? `${title} ${year}` : title).replace(/%20/g, '+')}`;
+            const resolvedResult = finalResult || bestFallback || { mid: false, post: false, no: false, bloopers: false, sequel: false, url: defaultUrl, source: 'Aggregated' };
 
             console.log(`[Stream] Final Resolution -> Source Used: ${resolvedResult.source}`);
 
             const stream = {
                 name: 'After-Credits Scenes',
                 title: `${formatMessage(styleConfig, resolvedResult)}${styleConfig.showSource ? `\nSource: ${resolvedResult.source}` : ''}`,
-                url: resolvedResult.url || `https://aftercredits.com/?s=${encodeURIComponent(year ? `${title} ${year}` : title).replace(/%20/g, '+')}`
+                url: resolvedResult.url || defaultUrl
             };
 
             const cacheDuration = isAggregatedError ? CACHE_TTL_ERROR : CACHE_TTL_SUCCESS;

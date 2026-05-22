@@ -28,3 +28,6 @@
 ## 2024-05-20 - Global Regex Caching for String Replacements
  **Learning:** Regular expressions created inline within functions are recompiled on every invocation, wasting CPU cycles.
  **Action:** Extract static regular expressions used with `String.prototype.replace()` to module-level constants to avoid redundant recompilation.
+## 2026-05-22 - Extract redundant default fallback URL construction to local variable
+ **Learning:** When building fallback strings or objects in Javascript containing expressions like encodeURIComponent and Regex replacements, redundant inline expressions cost CPU cycles and memory allocations.
+ **Action:** Extract such expressions to a local variable once, and reference the local variable in the fallback construction where duplicate computations would occur.
