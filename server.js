@@ -98,6 +98,7 @@ const SAFE_SUFFIXES_REGEX = /^(blooper|bloopers|outtake|outtakes|extra|extras|an
 const STYLE_MODIFIERS_REGEX = /-nosource|-bloopers|-sequel/g;
 const CLEAN_CHARS_REGEX = /[^\w\s]/g;
 const MULTI_SPACE_REGEX = /\s+/g;
+const STRIP_HTML_REGEX = /<[^>]*>/g;
 const URL_SPACE_REGEX = /%20/g;
 
 // ⚡ Bolt: Extracted array to global Set to prevent redundant allocations on every page parse and improve lookup from O(N) to O(1)
@@ -617,7 +618,7 @@ async function checkMediaStinger(title, year, reqConfig) {
 
             const contentNode = $$('.post_secwrapper').first();
             const rawHtml = contentNode.html() || '';
-            const fullText = rawHtml.replace(/<[^>]*>/g, ' ').toLowerCase().replace(/\s+/g, ' ');
+            const fullText = rawHtml.replace(STRIP_HTML_REGEX, ' ').toLowerCase().replace(MULTI_SPACE_REGEX, ' ');
             const body = parseMediaStingerBodyText(fullText);
 
             if ((seo.seoMid === true || body.bodyMid) && !body.midNo && !body.legacyMidNo && !body.midIsAudio && seo.seoMid !== 'false') hasMid = true;
