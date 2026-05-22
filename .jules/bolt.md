@@ -25,3 +25,6 @@
 ## 2024-05-20 - Global Regex Caching in Node.js
  **Learning:** In Node.js, extracting regular expressions with the global flag (`/g`) to module-level constants is safe for concurrent requests when used with `String.prototype.replace()`, as the method ignores and resets `lastIndex` for each operation, preventing state/race conditions.
  **Action:** Proactively extract static regexes used in high-throughput handlers to module scope to avoid redundant compilation, while remaining cautious of `exec()` or `test()` which do depend on `lastIndex`.
+## 2024-05-20 - Global Regex Caching for String Replacements
+ **Learning:** Regular expressions created inline within functions are recompiled on every invocation, wasting CPU cycles.
+ **Action:** Extract static regular expressions used with `String.prototype.replace()` to module-level constants to avoid redundant recompilation.

@@ -96,6 +96,10 @@ const NEGATIVE_REGEX = /(no extra|no stinger|nothing|are no|no scene)/;
 const STINGER_EXCEPTION_REGEX = /(extra shot|audio|voice|laugh|but|however)/;
 const SAFE_SUFFIXES_REGEX = /^(blooper|bloopers|outtake|outtakes|extra|extras|and|or|with|scene|scenes|credit|credits|stinger|stingers|review|reviews|post|mid|after|end|during|the|is|a|an|there|are|movie|film|\s)+$/;
 const STYLE_MODIFIERS_REGEX = /-nosource|-bloopers|-sequel/g;
+const CLEAN_CHARS_REGEX = /[^\w\s]/g;
+const MULTI_SPACE_REGEX = /\s+/g;
+const URL_SPACE_REGEX = /%20/g;
+
 // ⚡ Bolt: Extracted array to global Set to prevent redundant allocations on every page parse and improve lookup from O(N) to O(1)
 const AC_BLOOPER_TAGS = new Set(['outtake', 'musical', 'blooper', 'humorous credit']);
 
@@ -559,8 +563,8 @@ function parseMediaStingerBodyText(fullText) {
 
 async function searchMediaStinger(title, reqConfig) {
     const cleanedTitle = cleanTitle(title.toLowerCase().trim());
-    const cleanSearchTitle = title.replace(/[^\w\s]/g, '').replace(/\s+/g, ' ').trim();
-    const searchUrl = `http://www.mediastinger.com/?s=${encodeURIComponent(cleanSearchTitle).replace(/%20/g, '+')}`;
+    const cleanSearchTitle = title.replace(CLEAN_CHARS_REGEX, '').replace(MULTI_SPACE_REGEX, ' ').trim();
+    const searchUrl = `http://www.mediastinger.com/?s=${encodeURIComponent(cleanSearchTitle).replace(URL_SPACE_REGEX, '+')}`;
     const searchRes = await axios.get(searchUrl, reqConfig);
     const $ = cheerio.load(searchRes.data);
     let potentialMatches = [];
