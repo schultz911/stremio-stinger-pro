@@ -139,6 +139,10 @@ const WIKI_TTL = 24 * 60 * 60 * 1000;
 function validateUrl(targetUrl, baseUrl, expectedHostname) {
     try {
         const parsedUrl = new URL(targetUrl, baseUrl);
+        if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+            console.warn(`[Security] Blocked unauthorized protocol: ${sanitizeError(targetUrl)}`);
+            return null;
+        }
         if (parsedUrl.hostname !== expectedHostname && parsedUrl.hostname !== `www.${expectedHostname}`) {
             console.warn(`[Security] Blocked untrusted URL: ${sanitizeError(targetUrl)}`);
             return null;

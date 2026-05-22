@@ -14,3 +14,7 @@
  **Vulnerability:** The application lacks rate limiting on its endpoints. Because the service aggregates data from multiple external APIs concurrently (e.g., AfterCredits, TMDB, MediaStinger, Wikipedia), a single incoming request can trigger 4+ outbound network requests, allowing for Denial of Service and Server-Side Request Forgery amplification attacks.
  **Learning:** Aggregator services can multiply the impact of requests, meaning a lack of rate-limiting is disproportionately dangerous compared to a standard REST API.
  **Prevention:** Implement IP-based rate limiting on all public-facing endpoints (using tools like `express-rate-limit` or an in-memory Map) to restrict the number of requests a single client can make within a specific time window.
+## 2026-05-22 - SSRF Protocol Bypass
+ **Vulnerability:** The `validateUrl` function lacked protocol validation, making it vulnerable to SSRF via arbitrary protocols like `javascript:` or `file:` that bypass simple hostname checks.
+ **Learning:** Hostname validation is insufficient if the protocol is not explicitly restricted to HTTP/HTTPS, allowing attackers to exploit internal systems or trigger XSS using unexpected URI schemes.
+ **Prevention:** Always validate the parsed URL's protocol explicitly against a whitelist (`http:` and `https:`) before executing network requests.
