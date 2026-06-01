@@ -110,4 +110,60 @@ describe('parseMediaStingerSeoText', () => {
             noStinger: false
         });
     });
+
+    it('detects mid negative correctly using mid keyword', () => {
+        const result = parseMediaStingerSeoText('no scenes mid credits');
+        expect(result).toEqual({
+            seoMid: 'false',
+            seoPost: false,
+            seoBloopers: false,
+            seoNo: true,
+            noStinger: false
+        });
+    });
+
+    it('detects post negative correctly using post keyword', () => {
+        const result = parseMediaStingerSeoText('no scenes post credits');
+        expect(result).toEqual({
+            seoMid: false,
+            seoPost: 'false',
+            seoBloopers: false,
+            seoNo: true,
+            noStinger: false
+        });
+    });
+
+    it('detects mid positive correctly using mid keyword', () => {
+        const result = parseMediaStingerSeoText('there is a scene mid credits');
+        expect(result).toEqual({
+            seoMid: true,
+            seoPost: false,
+            seoBloopers: false,
+            seoNo: false,
+            noStinger: false
+        });
+    });
+
+    it('detects post positive correctly using post keyword', () => {
+        const result = parseMediaStingerSeoText('there is a scene post credits');
+        expect(result).toEqual({
+            seoMid: false,
+            seoPost: true,
+            seoBloopers: false,
+            seoNo: false,
+            noStinger: false
+        });
+    });
+
+    it('detects bloopers correctly using outtake keyword', () => {
+        const result = parseMediaStingerSeoText('there are outtakes');
+        expect(result).toEqual({
+            seoMid: false,
+            seoPost: false,
+            seoBloopers: true,
+            seoNo: false,
+            noStinger: false
+        });
+    });
+
 });
