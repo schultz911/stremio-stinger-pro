@@ -205,4 +205,5 @@ async function checkMediaStinger(title, year, reqConfig) {
 
 module.exports = {
     checkMediaStinger,
+    parseMediaStingerSeoText,
 };
