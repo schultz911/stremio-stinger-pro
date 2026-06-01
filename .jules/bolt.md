@@ -4,3 +4,6 @@
 ## 2023-10-27 - Optimized HTML Entity Decoding in Loops
  **Learning:** Using `cheerio.load()` inside tight processing loops to parse simple HTML strings and decode entities introduces severe synchronous parsing overhead.
  **Action:** Instead of `cheerio.load().text()`, implement a lightweight string-replacement function leveraging pre-compiled regular expressions to strip HTML tags and decode basic entities (like `&#8211;`, `&amp;`, `&quot;`). This avoids redundant DOM instantiation and delivers order-of-magnitude performance gains for simple string extraction tasks.
+## 2024-06-01 - [Non-blocking Background Cache Saving]
+ **Learning:** The `redisCache.setCache` function handles its own Promise rejections internally via a `try...catch` block. This allows it to be safely executed as a non-blocking background operation (fire-and-forget) without the need for `await` or appending external `.catch()` blocks, preventing unhandled promise rejections and speeding up the response time.
+ **Action:** When optimizing operations that don't need to block the response, evaluate whether the underlying function catches its own errors. If it does, safely remove the `await` keyword to execute the task in the background.
