@@ -202,7 +202,7 @@ const streamHandler = async (req, res) => {
             const cacheDuration = isAggregatedError ? CACHE_TTL_ERROR : CACHE_TTL_SUCCESS;
             streamCache.set(cacheKey, { expiresAt: Date.now() + cacheDuration, stream });
             if (redisCache.isRedisEnabled() && !isAggregatedError) {
-                await redisCache.setCache(cacheKey, stream, Math.floor(CACHE_TTL_SUCCESS / 1000));
+                redisCache.setCache(cacheKey, stream, Math.floor(CACHE_TTL_SUCCESS / 1000));
             }
 
             log(`[Stream] Payload generated and cached. Sequence complete.`);
