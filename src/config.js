@@ -11,7 +11,7 @@ const CACHE_TTL_ERROR = 60 * 1000;
 const MAX_CACHE_SIZE = 5000;
 
 const CINEMETA_TIMEOUT = 2000; // 2 seconds
-const SCRAPER_TIMEOUT = 6000; // 6 seconds
+const SCRAPER_TIMEOUT = 8000; // 8 seconds
 const ENABLE_LOGGING = process.env.ENABLE_LOGGING !== 'false';
 
 // Centralized Axios config with Keep-Alive for low latency
