@@ -19,6 +19,11 @@ const activeRequests = new LRUCache({
     max: 1000,
     ttl: 30000, // Safety net TTL for requests hanging
 });
+
+const previewSearchCache = new LRUCache({
+    max: 2000,
+    ttl: 24 * 60 * 60 * 1000, // 24 hours
+});
 const setCacheError = (cacheKey) => {
     streamCache.set(cacheKey, { expiresAt: Date.now() + CACHE_TTL_ERROR, stream: null });
     if (redisCache.isRedisEnabled()) {
@@ -623,6 +628,13 @@ const streamHandler = async (req, res) => {
 
 const searchMovieIdByName = async (query, apiKey) => {
     const key = apiKey || DEFAULT_TMDB_KEY;
+    const cacheKey = `${query}_${key}`;
+
+    if (previewSearchCache.has(cacheKey)) {
+        log(`[Preview Search] Cache HIT for: "${query}"`);
+        return previewSearchCache.get(cacheKey);
+    }
+
     const config = { timeout: CINEMETA_TIMEOUT };
 
     if (key) {
@@ -645,6 +657,7 @@ const searchMovieIdByName = async (query, apiKey) => {
                 const imdbId = extRes.data?.imdb_id;
                 if (imdbId && /^tt\d+$/.test(imdbId)) {
                     log(`[Preview Search] Resolved IMDb ID from TMDB: ${imdbId}`);
+                    previewSearchCache.set(cacheKey, imdbId);
                     return imdbId;
                 }
             }
@@ -662,18 +675,20 @@ const searchMovieIdByName = async (query, apiKey) => {
         const match = metas.find((m) => m.id && /^tt\d+$/.test(m.id));
         if (match) {
             log(`[Preview Search] Found Cinemeta Movie: "${match.name}" (IMDb: ${match.id})`);
+            previewSearchCache.set(cacheKey, match.id);
             return match.id;
         }
     } catch (e) {
         error(`[Preview Search Error] Cinemeta search failed: ${sanitizeError(e.message)}`);
     }
 
+    previewSearchCache.set(cacheKey, null, { ttl: 60 * 60 * 1000 }); // Cache misses for 1 hour
     return null;
 };
 
 const previewHandler = async (req, res) => {
     const { id } = req.params;
-    if (!id) {
+    if (!id || typeof id !== 'string' || id.length > 200) {
         res.setHeader('Cache-Control', 'public, max-age=86400');
         return res.status(400).json({ error: 'Movie name or IMDb ID is required.' });
     }
@@ -682,16 +697,6 @@ const previewHandler = async (req, res) => {
         log(`[Preview] Request for query/ID: ${id}`);
         const apiKey = req.query.apiKey || null;
 
-        let imdbId = id;
-        if (!/^tt\d+$/.test(imdbId)) {
-            // Not a valid IMDb ID format, search by name
-            imdbId = await searchMovieIdByName(id, apiKey);
-            if (!imdbId) {
-                res.setHeader('Cache-Control', 'public, max-age=60');
-                return res.status(404).json({ error: `Movie "${id}" not found.` });
-            }
-        }
-
         const styleConfig = {
             style: 'colorful',
             showSource: true,
@@ -699,9 +704,40 @@ const previewHandler = async (req, res) => {
             showSequel: true,
             showRelated: true,
         };
-        const dummyCacheKey = `${imdbId}_preview_colorful`;
 
-        await processScrapingSequence(imdbId, apiKey, dummyCacheKey, styleConfig);
+        let imdbId;
+        const previewReqKey = `preview_req_${id}_${apiKey || 'none'}`;
+
+        if (activeRequests.has(previewReqKey)) {
+            log(`[Preview] Concurrent request detected for ID: ${id}. Coalescing...`);
+            imdbId = await activeRequests.get(previewReqKey);
+        } else {
+            const previewPromise = (async () => {
+                let resolvedId = id;
+                if (!/^tt\d+$/.test(resolvedId)) {
+                    // Not a valid IMDb ID format, search by name
+                    resolvedId = await searchMovieIdByName(id, apiKey);
+                    if (!resolvedId) return null;
+                }
+                const dummyCacheKey = `${resolvedId}_preview_colorful`;
+                await processScrapingSequence(resolvedId, apiKey, dummyCacheKey, styleConfig);
+                return resolvedId;
+            })();
+
+            activeRequests.set(previewReqKey, previewPromise);
+            try {
+                imdbId = await previewPromise;
+            } finally {
+                if (activeRequests.get(previewReqKey) === previewPromise) {
+                    activeRequests.delete(previewReqKey);
+                }
+            }
+        }
+
+        if (!imdbId) {
+            res.setHeader('Cache-Control', 'public, max-age=60');
+            return res.status(404).json({ error: `Movie "${id}" not found.` });
+        }
 
         const cached = rawScraperCache.get(imdbId);
         if (cached) {
