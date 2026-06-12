@@ -564,6 +564,11 @@ const streamHandler = async (req, res) => {
         res.setHeader('Cache-Control', 'public, max-age=86400');
         return res.json({ streams: [] });
     }
+    if (typeof id !== 'string' || id.length > 200) {
+        warn(`[Stream] Invalid ID length or type: ${sanitizeError(id)}`);
+        res.setHeader('Cache-Control', 'public, max-age=86400');
+        return res.status(400).json({ streams: [] });
+    }
     if (!id || !/^tt\d+$/.test(id)) {
         warn(`[Stream] Invalid ID format: ${sanitizeError(id)}`);
         res.setHeader('Cache-Control', 'public, max-age=86400');
@@ -676,6 +681,10 @@ const previewHandler = async (req, res) => {
     if (!id) {
         res.setHeader('Cache-Control', 'public, max-age=86400');
         return res.status(400).json({ error: 'Movie name or IMDb ID is required.' });
+    }
+    if (typeof id !== 'string' || id.length > 200) {
+        res.setHeader('Cache-Control', 'public, max-age=86400');
+        return res.status(400).json({ error: 'Invalid Movie name or IMDb ID length.' });
     }
 
     try {
