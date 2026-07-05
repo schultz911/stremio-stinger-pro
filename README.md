@@ -1,6 +1,6 @@
 # Stremio Stinger Pro
 
-## Version 3.0.11
+## Version 3.1.0
 
 ![logo](public/icon.png)
 
@@ -124,7 +124,7 @@ npm run format
 
 ## 📋 Release History
 
-### Release: v3.0.11 (Latest)
+### Release: v3.1.0 (Latest)
 
 - **Optimization:** Added distributed caching layers via Redis client integration.
 - **Optimization:** Implemented Redis Lua-based and local memory-based rate limiters.

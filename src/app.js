@@ -36,7 +36,17 @@ app.use((req, res, next) => {
     next();
 });
 
-app.set('trust proxy', 1);
+const trustProxyVal = process.env.TRUST_PROXY || '1';
+app.set(
+    'trust proxy',
+    trustProxyVal === 'true'
+        ? true
+        : trustProxyVal === 'false'
+          ? false
+          : isNaN(trustProxyVal)
+            ? trustProxyVal
+            : Number(trustProxyVal)
+);
 
 // Request Tracing Middleware
 app.use((req, res, next) => {
@@ -187,13 +197,20 @@ app.get('/:p1', (req, res, next) => {
     if (p1.includes('.') || ['health', 'configure'].includes(p1)) {
         return next();
     }
+    // Validate that p1 contains only alphanumeric characters, hyphens, and underscores to prevent Open Redirect
+    if (!/^[a-z0-9-_]+$/i.test(p1)) {
+        return next();
+    }
     res.redirect(`/${p1}/configure`);
 });
 
 app.get('/:style/:apiKey', (req, res, next) => {
     const { style, apiKey } = req.params;
     if (apiKey && /^[a-f0-9]{32}$/i.test(apiKey)) {
-        return res.redirect(`/${style}/${apiKey}/configure`);
+        // Validate that style contains only alphanumeric characters, hyphens, and underscores to prevent Open Redirect
+        if (/^[a-z0-9-_]+$/i.test(style)) {
+            return res.redirect(`/${style}/${apiKey}/configure`);
+        }
     }
     next();
 });

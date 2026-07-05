@@ -125,4 +125,29 @@ describe('Stremio Stinger Pro E2E', () => {
         expect(res.body).toHaveProperty('mid');
         expect(res.body).toHaveProperty('post');
     }, 30000);
+
+    describe('Security and Optimization Improvements', () => {
+        it('should prevent open redirects on unsafe /:p1 route', async () => {
+            const res = await request(app).get('/%2f%2fevil.com');
+            expect(res.statusCode).not.toEqual(302);
+            if (res.statusCode === 302) {
+                expect(res.headers.location).not.toContain('evil.com');
+            }
+        });
+
+        it('should prevent open redirects on unsafe /:style/:apiKey route', async () => {
+            const res = await request(app).get('/%2f%2fevil.com/0287deb172a88d5d62c2ed82e863f4ee');
+            expect(res.statusCode).not.toEqual(302);
+            if (res.statusCode === 302) {
+                expect(res.headers.location).not.toContain('evil.com');
+            }
+        });
+
+        it('should correctly format cleanTitle using optimized join', () => {
+            const { cleanTitle } = require('../src/utils/strings');
+            expect(cleanTitle('The Avengers (2012)')).toEqual('Avengers 2012');
+            expect(cleanTitle('Iron Man 3')).toEqual('Iron Man 3');
+            expect(cleanTitle('A Quiet Place')).toEqual('Quiet Place');
+        });
+    });
 });

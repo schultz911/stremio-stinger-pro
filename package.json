@@ -1,6 +1,6 @@
 {
   "name": "stremio-stinger-pro",
-  "version": "3.0.11",
+  "version": "3.1.0",
   "description": "Stremio addon for after-credits metadata",
   "main": "server.js",
   "scripts": {

@@ -96,11 +96,7 @@ const cleanTitle = (str) => {
         }
     }
 
-    let res = words[start];
-    for (let j = start + 1; j <= end; j++) {
-        res += ' ' + words[j];
-    }
-    return res;
+    return words.slice(start, end + 1).join(' ');
 };
 
 const isSafeSuffix = (str) => {
