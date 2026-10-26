@@ -1,6 +1,6 @@
 # Stremio Stinger Pro
 
-## Version 3.1.0
+## Version 3.2.0
 
 ![logo](public/icon.png)
 
@@ -128,7 +128,15 @@ npm run format
 
 ## 📋 Release History
 
-### Release: v3.1.0 (Latest)
+### Release: v3.2.0 (Latest)
+
+- **Fix:** Follow Wikipedia's decade-specific film lists and retain the last valid index during upstream failures.
+- **Reliability:** Bound failed Wikipedia refresh retries and validate cached/source data before replacing the index.
+- **Performance:** Share pending acquisition across stream styles and previews, and bound Redis work during outages.
+- **Security:** Update compression and proxy-addr; verify native compression cleanup on aborted responses.
+- **Build:** Remove tracked installation artifacts and use lockfile-driven setup.
+
+### Release: v3.1.0
 
 - **Optimization:** Added distributed caching layers via Redis client integration.
 - **Optimization:** Implemented Redis Lua-based and local memory-based rate limiters.

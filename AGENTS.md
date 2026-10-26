@@ -30,6 +30,7 @@
 
 ## Approved and Implemented
 
+- **[2026-10-26] v3.2.0: Wikipedia split-list integration**: Follow validated decade-list links from the original directory page with at most two concurrent page fetches and one shared deadline. Keep the prior index on failed/empty/partial refreshes, reject empty or malformed Redis indexes, and wait 60 seconds before retrying failed refreshes. Preserve existing classification and Redis payload shapes.
 - **[2026-10-26] Readiness sweep: Compression resource cleanup**: Updated compression to 1.8.2 and proxy-addr to 2.0.8. Added an aborted-response native-resource regression test.
 - **[2026-10-26] Readiness sweep: Redis failure containment**: Capped the client command queue at 128, disabled offline replay, checked readiness, and reset stalled sockets with a five-second recovery cooldown. Preserved local fallback and healthy rate-limit semantics; this does not change the previously skipped reconnect backoff.
 - **[2026-10-26] Readiness sweep: Repository sanitation**: Untracked installed node_modules while retaining local files; setup now uses npm ci and no longer restores lockfiles after installation.

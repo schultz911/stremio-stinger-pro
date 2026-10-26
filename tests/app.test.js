@@ -10,6 +10,7 @@ describe('Stremio Stinger Pro E2E', () => {
         const res = await request(app).get('/manifest.json');
         expect(res.statusCode).toEqual(200);
         expect(res.body.id).toEqual('org.stinger.pro');
+        expect(res.body.version).toEqual(require('../package.json').version);
         expect(res.body.resources).toContain('stream');
     });
 
