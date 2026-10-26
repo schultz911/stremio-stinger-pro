@@ -31,22 +31,13 @@ fi
 
 # 3. Install project dependencies
 echo "Installing dependencies..."
-npm install --include=dev
+npm ci --include=dev
 echo "[OK] Dependencies installed successfully."
 
 # 4. Verify the setup by running test suite
 echo "Running validation tests..."
 npm test -- --forceExit
 echo "[OK] Validation tests completed successfully."
-
-# 5. Clean up package-lock changes to keep the working tree clean
-if command -v git &> /dev/null && git rev-parse --is-inside-work-tree &> /dev/null; then
-    echo "Cleaning up package-lock changes..."
-    git checkout HEAD -- package-lock.json node_modules/.package-lock.json || true
-    echo "[OK] Working tree package-lock changes reverted."
-else
-    echo "[Skip] Git not available or not inside a git repository; skipping package-lock cleanup."
-fi
 
 echo "========================================="
 echo "Setup completed successfully! Ready."
