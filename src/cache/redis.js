@@ -2,10 +2,14 @@ const { createClient } = require('redis');
 const { sanitizeError } = require('../utils/network');
 const { log, warn, error } = require('../utils/logger');
 
+const COMMAND_TIMEOUT_MS = 500;
+const FAILURE_COOLDOWN_MS = 5000;
+const COMMAND_QUEUE_LIMIT = 128;
 let redisClient;
 let useRedis = false;
+let recoveryTimer;
+let stopping = false;
 
-// Initialize Redis if URL is provided and not in a test environment
 const luaScript = `
     local current = redis.call('INCR', KEYS[1])
     local pttl = redis.call('PTTL', KEYS[1])
@@ -17,10 +21,60 @@ const luaScript = `
 `;
 let rateLimitSha = null;
 
-if (process.env.REDIS_URL && process.env.NODE_ENV !== 'test') {
-    redisClient = createClient({
+const isRedisEnabled = () => !stopping && useRedis && !!redisClient?.isReady;
+
+const withTimeout = async (promise, timeoutMs = COMMAND_TIMEOUT_MS) => {
+    let timeoutId;
+    try {
+        return await Promise.race([
+            promise,
+            new Promise((_, reject) => {
+                timeoutId = setTimeout(() => reject(new Error('Redis operation timed out')), timeoutMs);
+            }),
+        ]);
+    } finally {
+        clearTimeout(timeoutId);
+    }
+};
+
+const suspendClient = (client) => {
+    if (stopping || client !== redisClient || recoveryTimer) return;
+    useRedis = false;
+    rateLimitSha = null;
+    // Reset the whole connection: timed-out commands may have been written, so
+    // dropping individual replies would break RESP ordering and retain work.
+    if (client.isOpen) client.destroy();
+    recoveryTimer = setTimeout(() => {
+        recoveryTimer = undefined;
+        if (!stopping) connectRedis();
+    }, FAILURE_COOLDOWN_MS);
+    recoveryTimer.unref();
+};
+
+const runCommand = async (operation) => {
+    if (!isRedisEnabled()) return null;
+    const client = redisClient;
+    try {
+        return await withTimeout(operation(client));
+    } catch (e) {
+        // Redis command errors (including NOSCRIPT, ACL errors and a full queue)
+        // do not imply a dead connection. Reset only transport failures/timeouts.
+        if (
+            e.message === 'Redis operation timed out' ||
+            !client.isReady ||
+            ['ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'EPIPE'].includes(e.code)
+        ) suspendClient(client);
+        throw e;
+    }
+};
+
+function connectRedis() {
+    const client = createClient({
         url: process.env.REDIS_URL,
+        disableOfflineQueue: true,
+        commandsQueueMaxLength: COMMAND_QUEUE_LIMIT,
         socket: {
+            connectTimeout: 5000,
             reconnectStrategy: (retries) => {
                 if (retries > 10) {
                     warn('[System] Redis reconnect limits reached. Falling back to memory cache entirely.');
@@ -31,132 +85,71 @@ if (process.env.REDIS_URL && process.env.NODE_ENV !== 'test') {
             },
         },
     });
-    redisClient.on('error', (err) => {
-        if (redisClient.isOpen) {
-            error('Redis Client Error', sanitizeError(err.message || err));
-        }
+    redisClient = client;
+    client.on('error', (err) => {
+        if (client.isOpen) error('Redis Client Error', sanitizeError(err.message || err));
     });
-
-    redisClient
-        .connect()
-        .then(async () => {
-            if (redisClient.isOpen) {
-                log('[System] Redis distributed cache connected.');
-                useRedis = true;
-                try {
-                    rateLimitSha = await redisClient.sendCommand(['SCRIPT', 'LOAD', luaScript]);
-                    log('[System] Redis rate limit script loaded into cache.');
-                } catch (e) {
-                    warn(
-                        '[System] Failed to load Lua script into Redis, falling back to EVAL',
-                        sanitizeError(e.message || e)
-                    );
-                }
-            }
-        })
-        .catch((err) => {
-            error('Failed to connect to Redis', sanitizeError(err.message || err));
-        });
+    client.on('ready', () => {
+        if (stopping || client !== redisClient) return;
+        useRedis = true;
+        rateLimitSha = null;
+        log('[System] Redis distributed cache connected.');
+        runCommand((activeClient) => activeClient.sendCommand(['SCRIPT', 'LOAD', luaScript]))
+            .then((sha) => {
+                if (client === redisClient && isRedisEnabled()) rateLimitSha = sha;
+            })
+            .catch((e) => warn('[System] Failed to load Redis rate limit script', sanitizeError(e.message || e)));
+    });
+    client.connect().catch((err) => error('Failed to connect to Redis', sanitizeError(err.message || err)));
 }
 
-const withTimeout = (promise, timeoutMs = 500) => {
-    let timeoutId;
-    const timeoutPromise = new Promise((_, reject) => {
-        timeoutId = setTimeout(() => reject(new Error('Redis operation timed out')), timeoutMs);
-    });
-    return Promise.race([
-        promise.then(
-            (val) => {
-                clearTimeout(timeoutId);
-                return val;
-            },
-            (err) => {
-                clearTimeout(timeoutId);
-                throw err;
-            }
-        ),
-        timeoutPromise,
-    ]);
-};
-
 const getCache = async (key) => {
-    if (useRedis) {
-        try {
-            const data = await withTimeout(redisClient.get(key), 500);
-            return data ? JSON.parse(data) : null;
-        } catch (e) {
-            error('Redis get error', sanitizeError(e.message || e));
-            return null;
-        }
+    try {
+        const data = await runCommand((client) => client.get(key));
+        return data ? JSON.parse(data) : null;
+    } catch (e) {
+        error('Redis get error', sanitizeError(e.message || e));
+        return null;
     }
-    // Fallback to memory cache logic will be handled in the orchestrator
-    return null;
 };
 
 const setCache = async (key, value, ttlSeconds) => {
-    if (useRedis) {
-        try {
-            await withTimeout(redisClient.setEx(key, ttlSeconds, JSON.stringify(value)), 500);
-        } catch (e) {
-            error('Redis set error', sanitizeError(e.message || e));
-        }
+    if (!isRedisEnabled()) return;
+    try {
+        await runCommand((client) => client.setEx(key, ttlSeconds, JSON.stringify(value)));
+    } catch (e) {
+        error('Redis set error', sanitizeError(e.message || e));
     }
 };
 
 const quitRedis = async () => {
-    if (redisClient) {
-        try {
-            await withTimeout(redisClient.disconnect(), 1000);
-            log('[System] Redis client disconnected.');
-        } catch (e) {
-            error('Redis disconnect error', sanitizeError(e.message || e));
-        } finally {
-            useRedis = false;
-        }
-    }
+    stopping = true;
+    clearTimeout(recoveryTimer);
+    recoveryTimer = undefined;
+    useRedis = false;
+    if (redisClient?.isOpen) redisClient.destroy();
+    log('[System] Redis client disconnected.');
 };
 
 const incrementRateLimit = async (key, ttlSeconds) => {
-    if (useRedis) {
-        try {
-            let results;
-            if (rateLimitSha) {
-                results = await withTimeout(
-                    redisClient.sendCommand(['EVALSHA', rateLimitSha, '1', key, String(ttlSeconds)]),
-                    500
-                );
-            } else {
-                results = await withTimeout(
-                    redisClient.eval(luaScript, {
-                        keys: [key],
-                        arguments: [String(ttlSeconds)],
-                    }),
-                    500
-                );
-            }
-
-            const count = results[0];
-            const pttl = results[1];
-
-            return { count, pttl };
-        } catch (e) {
-            // If EVALSHA fails because script is flushed, reset SHA and fallback to EVAL next time
-            if (e.message && e.message.includes('NOSCRIPT')) {
-                rateLimitSha = null;
-                warn('Redis NOSCRIPT error, clearing SHA cache to reload next time');
-            } else {
-                error('Redis incr error', sanitizeError(e.message || e));
-            }
-            return null;
+    try {
+        const results = await runCommand((client) =>
+            rateLimitSha
+                ? client.sendCommand(['EVALSHA', rateLimitSha, '1', key, String(ttlSeconds)])
+                : client.eval(luaScript, { keys: [key], arguments: [String(ttlSeconds)] })
+        );
+        return results === null ? null : { count: results[0], pttl: results[1] };
+    } catch (e) {
+        if (e.message?.includes('NOSCRIPT')) {
+            rateLimitSha = null;
+            warn('Redis NOSCRIPT error, clearing SHA cache to reload next time');
+        } else {
+            error('Redis incr error', sanitizeError(e.message || e));
         }
+        return null;
     }
-    return null;
 };
 
-module.exports = {
-    getCache,
-    setCache,
-    isRedisEnabled: () => useRedis,
-    quitRedis,
-    incrementRateLimit,
-};
+if (process.env.REDIS_URL && process.env.NODE_ENV !== 'test') connectRedis();
+
+module.exports = { getCache, setCache, isRedisEnabled, quitRedis, incrementRateLimit };
