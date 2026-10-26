@@ -30,12 +30,15 @@
 
 ## Approved and Implemented
 
+- **[2026-10-26] Readiness sweep: Compression resource cleanup**: Updated compression to 1.8.2 and proxy-addr to 2.0.8. Added an aborted-response native-resource regression test.
+- **[2026-10-26] Readiness sweep: Redis failure containment**: Capped the client command queue at 128, disabled offline replay, checked readiness, and reset stalled sockets with a five-second recovery cooldown. Preserved local fallback and healthy rate-limit semantics; this does not change the previously skipped reconnect backoff.
+- **[2026-10-26] Readiness sweep: Repository sanitation**: Untracked installed node_modules while retaining local files; setup now uses npm ci and no longer restores lockfiles after installation.
+- **[2026-10-26] Readiness sweep: Complete acquisition coalescing coverage**: Shared pending metadata, source scraper, related-data, and preview search operations across display configurations. Credential-dependent work uses hashed scopes, and each caller retains its display formatting and optional related-data behavior.
 - **[2026-07-05] Phase 3: Configurable trust proxy**: Implemented environment variable `TRUST_PROXY` check in `src/app.js`.
 - **[2026-07-05] Phase 3: Route Redirect Input Sanitization**: Added regex checks `/^[a-z0-9-_]+$/i` to parameters in redirect routes in `src/app.js`.
 - **[2026-07-05] Phase 3: Title Cleaning String Concat Optimization**: Optimized title rebuilding loop using `slice().join(' ')` in `src/utils/strings.js`.
 - **[2026-06-15] Phase 2: TMDB Collections Lookup Optimization**: Pre-mapped collections/keywords IDs and names into static lookup tables at module load to optimize franchise checks in `src/scrapers/tmdb.js:269`.
 - **[2026-06-15] Phase 2: TMDB ID Resolution Caching**: Implemented a 24-hour LRU cache for TMDB ID queries in `src/scrapers/tmdb.js`, coalescing concurrent requests and caching resolved IDs to prevent redundant requests.
-*(None in this sweep)*
 
 ## Denied or Not Implemented
 

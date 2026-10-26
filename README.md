@@ -65,10 +65,11 @@ To deliver ultra-low tail latency, Stremio Stinger Pro executes scrapers concurr
 Stremio Stinger Pro is designed to handle high concurrency with enterprise-grade guards:
 
 1. **Multi-Tier Caching:** Implements an in-memory LRU cache (`lru-cache`) backed by a Redis distributed cache (`redis`). Memory cache is prioritized, falling back to Redis, and finally to source scrapers.
-2. **Request Coalescing (Singleflight):** Prevents cache stampedes by joining parallel concurrent requests for the same movie ID into a single shared execution promise, eliminating redundant origin fetches.
+2. **Request Coalescing (Singleflight):** Shares pending metadata, source scraper, related-data, and preview search operations across display configurations. Credential-dependent work uses hashed scopes. Each caller formats its own display options, and basic requests do not wait for optional related data.
 3. **Negative Cache:** Unresolved metadata lookups or invalid movie IDs are cached with a short TTL (`60 seconds`) to protect downstream APIs from hammering.
 4. **Log & Input Sanitization:** Personal API keys are stripped and sanitized from both database keys, input fields, and server console logs. SSRF is prevented by strictly validating HTTP protocols and hostnames before requests.
 5. **Rate Limiting:** A Redis Lua script-based rate limiter controls IP traffic with a local LRU rate limit fallback.
+6. **Redis Failure Containment:** The client accepts at most 128 outstanding commands and does not queue commands while offline. A stalled operation resets its connection after 500 ms; requests use existing local fallbacks during a five-second recovery cooldown before a new connection is attempted. The configured reconnect retry strategy remains unchanged.
 
 ---
 
@@ -109,6 +110,9 @@ Use the built-in PowerShell or Bash scripts to verify the Node environment, copy
 ```bash
 # Start the Express server locally
 npm start
+
+# Reproduce dependencies from the committed lockfile
+npm ci --include=dev
 
 # Run unit and integration tests
 npm test
