@@ -60,6 +60,7 @@ it('bounds real client pending work, closes a stalled socket, and reconnects aft
         await expect(redis.getCache('healthy')).resolves.toEqual({ cached: true });
         await expect(redis.incrementRateLimit('ip', 60)).resolves.toEqual({ count: 3, pttl: 58000 });
 
+        const stalledSocket = [...sockets][0];
         stalled = true;
         const results = await Promise.all(Array.from({ length: 300 }, (_, i) => redis.getCache(`stall_${i}`)));
         expect(results.every((result) => result === null)).toBe(true);
@@ -69,10 +70,11 @@ it('bounds real client pending work, closes a stalled socket, and reconnects aft
         const count = unanswered;
         await Promise.all(Array.from({ length: 100 }, () => redis.getCache('cooldown')));
         expect(unanswered).toBe(count);
-        for (let i = 0; i < 50 && sockets.size; i++) await delay(10);
-        expect(sockets.size).toBe(0);
-
         stalled = false;
+        // Recovery may create a new socket while an instrumented test is running;
+        // assert disposal of the stalled transport rather than all transports.
+        for (let i = 0; i < 200 && !stalledSocket.destroyed; i++) await delay(10);
+        expect(stalledSocket.destroyed).toBe(true);
         for (let i = 0; i < 325 && !redis.isRedisEnabled(); i++) await delay(20);
         expect(redis.isRedisEnabled()).toBe(true);
         await expect(redis.getCache('recovered')).resolves.toEqual({ cached: true });
