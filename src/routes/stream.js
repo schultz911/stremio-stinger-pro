@@ -12,6 +12,7 @@ const redisCache = require('../cache/redis');
 const scrapers = require('../scrapers');
 const { formatMessage, formatRelatedMessage } = require('../utils/formatter');
 const { log, warn, error } = require('../utils/logger');
+const { singleflight, credentialScope } = require('../utils/singleflight');
 
 const { LRUCache } = require('lru-cache');
 
@@ -41,6 +42,7 @@ const parseRequestConfig = (req) => {
 
     if (rawStyle.length > 50) rawStyle = 'colorful';
     if (apiKey && (apiKey.length > 100 || !/^[a-f0-9]{32}$/i.test(apiKey))) apiKey = null;
+    if (rawStyle === apiKey) rawStyle = 'colorful';
 
     const styleConfig = {
         style: rawStyle.replace(/-nosource|-bloopers|-sequel|-related/g, ''),
@@ -159,7 +161,7 @@ const raceMetadataSources = (id, apiKey) => {
     });
 };
 
-const fetchMetadata = async (id, apiKey) => {
+const fetchMetadataNetworkOrCache = async (id, apiKey) => {
     const cachedCinemeta = cinemetaCache.get(id);
     if (cachedCinemeta && Date.now() < cachedCinemeta.expiresAt) {
         log(`[Stream] Cinemeta Cache HIT (Memory) for ID: ${id}`);
@@ -216,6 +218,29 @@ const fetchMetadata = async (id, apiKey) => {
 
     return cacheVal;
 };
+
+const fetchMetadata = (id, apiKey) =>
+    singleflight(`metadata_${id}_${credentialScope(apiKey || DEFAULT_TMDB_KEY)}`, () =>
+        fetchMetadataNetworkOrCache(id, apiKey)
+    );
+
+const fetchRelatedData = (id, moviedbId, apiKey) =>
+    singleflight(`related_${id}_${moviedbId}_${credentialScope(apiKey || DEFAULT_TMDB_KEY)}`, async () => {
+        // The shared operation owns its deadline; individual callers cannot cancel it.
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), SCRAPER_TIMEOUT);
+        try {
+            return await scrapers.getRelatedMovies(
+                moviedbId,
+                apiKey,
+                { timeout: SCRAPER_TIMEOUT, signal: controller.signal },
+                id
+            );
+        } finally {
+            clearTimeout(timeoutId);
+            controller.abort();
+        }
+    });
 
 const processScrapingSequence = async (id, apiKey, cacheKey, styleConfig) => {
     let finalResult;
@@ -277,17 +302,17 @@ const processScrapingSequence = async (id, apiKey, cacheKey, styleConfig) => {
         // Trigger related data fetch concurrently if enabled
         let pRelated = Promise.resolve(undefined);
         if (moviedbId && styleConfig.showRelated) {
-            const relatedController = new AbortController();
-            const relatedTimeoutId = setTimeout(() => relatedController.abort(), SCRAPER_TIMEOUT);
-            pRelated = scrapers
-                .getRelatedMovies(moviedbId, apiKey, { timeout: SCRAPER_TIMEOUT, signal: relatedController.signal }, id)
-                .finally(() => clearTimeout(relatedTimeoutId));
+            pRelated = fetchRelatedData(id, moviedbId, apiKey).catch(() => null);
         }
 
         // Fire all scrapers concurrently
         log(`[Stream] Firing all scrapers (AfterCredits, TMDB, Wikipedia) concurrently...`);
-        const pAc = scrapers.checkAfterCredits(title, year, { timeout: SCRAPER_TIMEOUT }).catch(() => null);
-        const pTmdb = scrapers.checkTmdb(id, moviedbId, apiKey, { timeout: SCRAPER_TIMEOUT }).catch(() => null);
+        const pAc = singleflight(`aftercredits_${JSON.stringify([title, year])}`, () =>
+            scrapers.checkAfterCredits(title, year, { timeout: SCRAPER_TIMEOUT })
+        ).catch(() => null);
+        const pTmdb = singleflight(`tmdb_${id}_${moviedbId}_${credentialScope(apiKey || DEFAULT_TMDB_KEY)}`, () =>
+            scrapers.checkTmdb(id, moviedbId, apiKey, { timeout: SCRAPER_TIMEOUT })
+        ).catch(() => null);
         const pWiki = scrapers.checkWikipedia(title).catch(() => null);
 
         // Fast-path racing logic
@@ -340,7 +365,7 @@ const processScrapingSequence = async (id, apiKey, cacheKey, styleConfig) => {
         rawScraperCache.set(id, {
             finalResult: fastResult,
             bestFallback: null,
-            relatedData,
+            relatedData: relatedData === undefined ? rawScraperCache.get(id)?.relatedData : relatedData,
             title,
             year,
             moviedbId,
@@ -393,7 +418,7 @@ const processScrapingSequence = async (id, apiKey, cacheKey, styleConfig) => {
                 const finalScraperData = {
                     finalResult: merged,
                     bestFallback: null,
-                    relatedData,
+                    relatedData: relatedData === undefined ? rawScraperCache.get(id)?.relatedData : relatedData,
                     title,
                     year,
                     moviedbId,
@@ -408,7 +433,7 @@ const processScrapingSequence = async (id, apiKey, cacheKey, styleConfig) => {
                             {
                                 finalResult: merged,
                                 bestFallback: null,
-                                relatedData,
+                                relatedData: finalScraperData.relatedData,
                                 title,
                                 year,
                                 moviedbId,
@@ -462,15 +487,10 @@ const processScrapingSequence = async (id, apiKey, cacheKey, styleConfig) => {
             moviedbIdForRelated = metaData?.moviedbId;
         }
         if (moviedbIdForRelated) {
-            const scraperController = new AbortController();
-            const scraperTimeoutId = setTimeout(() => scraperController.abort(), SCRAPER_TIMEOUT);
             try {
-                relatedData = await scrapers.getRelatedMovies(
-                    moviedbIdForRelated,
-                    apiKey,
-                    { timeout: SCRAPER_TIMEOUT, signal: scraperController.signal },
-                    id
-                );
+                relatedData = await fetchRelatedData(id, moviedbIdForRelated, apiKey);
+                // Do not overwrite background-enriched stingers with an earlier fast result.
+                finalResult = rawScraperCache.get(id)?.finalResult || finalResult;
                 rawScraperCache.set(id, {
                     finalResult,
                     bestFallback,
@@ -491,9 +511,6 @@ const processScrapingSequence = async (id, apiKey, cacheKey, styleConfig) => {
                 }
             } catch {
                 relatedData = null;
-            } finally {
-                clearTimeout(scraperTimeoutId);
-                scraperController.abort();
             }
         } else {
             relatedData = null;
@@ -576,6 +593,7 @@ const streamHandler = async (req, res) => {
 
     const { rawStyle, apiKey, styleConfig } = parseRequestConfig(req);
     const cacheKey = `${id}_${rawStyle}`;
+    const activeKey = `${cacheKey}_${credentialScope(apiKey || DEFAULT_TMDB_KEY)}`;
 
     const cachedResult = await getCachedStream(cacheKey);
     if (cachedResult.hit) {
@@ -589,9 +607,9 @@ const streamHandler = async (req, res) => {
         return;
     }
 
-    if (activeRequests.has(cacheKey)) {
+    if (activeRequests.has(activeKey)) {
         log(`[Stream] Cache MISS. Concurrent request detected for key: ${cacheKey}. Coalescing...`);
-        const p = activeRequests.get(cacheKey);
+        const p = activeRequests.get(activeKey);
         try {
             const stream = await p;
             const isError = !stream;
@@ -605,7 +623,7 @@ const streamHandler = async (req, res) => {
     }
 
     const scrapePromise = processScrapingSequence(id, apiKey, cacheKey, styleConfig);
-    activeRequests.set(cacheKey, scrapePromise);
+    activeRequests.set(activeKey, scrapePromise);
 
     try {
         const stream = await scrapePromise;
@@ -615,13 +633,13 @@ const streamHandler = async (req, res) => {
     } catch {
         sendJson(res, [], true);
     } finally {
-        if (activeRequests.get(cacheKey) === scrapePromise) {
-            activeRequests.delete(cacheKey);
+        if (activeRequests.get(activeKey) === scrapePromise) {
+            activeRequests.delete(activeKey);
         }
     }
 };
 
-const searchMovieIdByName = async (query, apiKey) => {
+const searchMovieIdByNameNetwork = async (query, apiKey) => {
     const key = apiKey || DEFAULT_TMDB_KEY;
     const config = { timeout: CINEMETA_TIMEOUT };
 
@@ -670,6 +688,11 @@ const searchMovieIdByName = async (query, apiKey) => {
 
     return null;
 };
+
+const searchMovieIdByName = (query, apiKey) =>
+    singleflight(`search_${JSON.stringify(query)}_${credentialScope(apiKey || DEFAULT_TMDB_KEY)}`, () =>
+        searchMovieIdByNameNetwork(query, apiKey)
+    );
 
 const previewHandler = async (req, res) => {
     const { id } = req.params;
